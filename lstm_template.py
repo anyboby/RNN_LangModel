@@ -83,7 +83,7 @@ def forward(inputs, targets, memory):
 
     # Here you should allocate some variables to store the activations during forward
     # One of them here is to store the hiddens and the cells
-    hs, cs = {}
+    hs, cs = {}, {}
 
     hs[-1] = np.copy(hprev)
     cs[-1] = np.copy(cprev)
@@ -107,45 +107,65 @@ def forward(inputs, targets, memory):
 
         # compute the forget gate
         # f_gate = sigmoid (W_f \cdot [h X] + b_f)
+        f_gate = sigmoid(np.dot(W_f, zs[t]) + b_f)
 
         # compute the input gate
         # i_gate = sigmoid (W_i \cdot [h X] + b_i)
+        i_gate = sigmoid (np.dot(W_i,zs[t] + b_f))
 
         # compute the candidate memory
         # \hat{c} = tanh (W_c \cdot [h X] + b_c])
+        c_cand = tanh(np.dot(W_c, zs[t])+b_c)
+
 
         # new memory: applying forget gate on the previous memory
         # and then adding the input gate on the candidate memory
         # c_new = f_gate * prev_c + i_gate * \hat{c}
+        cs[t] = f_gate * cs[t-1] + i_gate * c_cand
 
         # output gate
         # o_gate = sigmoid (Wo \cdot [h X] + b_o)
+        o_gate = sigmoid (np.dot(Wo, zs[t])+b_o)
 
         # new hidden state for the LSTM
-        # h = o_gate * tanh(c_new)
+        hs[t] = o_gate * tanh(c_new)
 
         # DONE LSTM
         # output layer - softmax and cross-entropy loss
         # unnormalized log probabilities for next chars
-
         # o = Why \cdot h + by
+        os[t] = np.dot(Why, hs[t]) + by
 
         # softmax for probabilities for next chars
         # p = softmax(o)
+        ps[t] = softmax(os[t])
+        
 
-        # cross-entropy loss
+        # cross-entropy loss       
         # cross entropy loss at time t:
         # create an one hot vector for the label y
+        ys[t] = np.zeros((vocab_size, 1))
+        ys[t][targets[t]] = 1
 
+
+        
         # and then cross-entropy (see the elman-rnn file for the hint)
+        loss_t = np.sum(-np.log(ps[t])*ys[t])
+        loss += loss_t
+
 
     # define your activations
+    activations = (xs, zs, f_gate, i_gate, c_cand, c_new, o_gate, hs, os, ps, ys)
     memory = (hs[len(inputs)-1], cs[len(inputs)-1])
 
     return loss, activations, memory
 
 
 def backward(activations, clipping=True):
+    """
+    during the backward pass we follow the track of the forward pass
+    the activations are needed so that we can avoid unnecessary re-computation
+    """
 
     # backward pass: compute gradients going backwards
     # Here we allocate memory for the gradients
@@ -153,6 +173,9 @@ def backward(activations, clipping=True):
     dby = np.zeros_like(by)
     dWf, dWi, dWc, dWo = np.zeros_like(Wf), np.zeros_like(Wi),np.zeros_like(Wc), np.zeros_like(Wo)
     dbf, dbi, dbc, dbo = np.zeros_like(bf), np.zeros_like(bi),np.zeros_like(bc), np.zeros_like(bo)
+
+    xs, zs, f_gate, i_gate, c_cand, c_new, o_gate, hs, os, ps, ys = activations
+
 
     # similar to the hidden states in the vanilla RNN
     # We need to initialize the gradients for these variables
@@ -163,7 +186,10 @@ def backward(activations, clipping=True):
     for t in reversed(range(len(inputs))):
 
         # IMPLEMENT YOUR BACKPROP HERE
-        # refer to the file elman_rnn.py for more details
+        # write error as L = 1/2*(ps[t]-ys[t])^2
+        # therefore dL/do becomes ps - ys 
+        do = ps[t] - ys[t]
+
 
 
     if clipping:

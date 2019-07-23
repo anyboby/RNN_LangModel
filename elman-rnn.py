@@ -32,7 +32,7 @@ def softmax(x):
 
 
 # should be simple plain text file. I provided the sample from "Hamlet - Shakespeares"
-data = open('data/input.txt', 'r').read()
+data = open('/media/mo/Sync/Sync/Uni/Deep Learning and Neural Networks/workspace/RNNAssignment/data/input.txt', 'r').read()
 chars = list(set(data))
 data_size, vocab_size = len(data), len(chars)
 print('data has %d characters, %d unique.' % (data_size, vocab_size))
@@ -40,12 +40,12 @@ char_to_ix = {ch: i for i, ch in enumerate(chars)}
 ix_to_char = {i: ch for i, ch in enumerate(chars)}
 
 # hyper-parameters deciding the network size
-emb_size = 32  # word/character embedding size
+emb_size = 64  # word/character embedding size
 seq_length = 128  # number of steps to unroll the RNN for the truncated back-propagation algorithm
 hidden_size = 10
 # learning rate for the Adagrad algorithm. (this one is not 'optimized', only required to make the model learn)
 learning_rate = 1e-1
-std=0.1  # The standard deviation for parameter initilization
+std=0.01  # The standard deviation for parameter initilization
 
 # model parameters
 # Here we initialize the parameters based an random uniform distribution, with the std of 0.01
@@ -108,7 +108,6 @@ def forward(inputs, labels, memory):
         # transform the one hot vector to embedding
         # x = Wemb x c
         xs[t] = np.dot(Wex, cs[t])
-
         # computation for the hidden state of the network
         # H = tanh ( Wh . H + Wx . x )
         h_pre_activation = np.dot(Wxh, xs[t]) + np.dot(Whh, hs[t - 1]) + bh
