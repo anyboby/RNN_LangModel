@@ -31,7 +31,7 @@ def softmax(x):
 
 
 # data I/O
-data = open('data/input.txt', 'r').read() # should be simple plain text file
+data = open('data/debug.txt', 'r').read() # should be simple plain text file
 chars = list(set(data))
 data_size, vocab_size = len(data), len(chars)
 print('data has %d characters, %d unique.' % (data_size, vocab_size))
@@ -42,9 +42,9 @@ std = 0.1
 option = sys.argv[1]
 
 # hyperparameters
-emb_size = 4
-hidden_size = 32  # size of hidden layer of neurons
-seq_length = 64  # number of steps to unroll the RNN for
+emb_size = 2
+hidden_size = 1  # size of hidden layer of neurons
+seq_length = 2  # number of steps to unroll the RNN for
 learning_rate = 5e-2
 max_updates = 500000
 
@@ -83,7 +83,7 @@ def forward(inputs, targets, memory):
 
     # Here you should allocate some variables to store the activations during forward
     # One of them here is to store the hiddens and the cells
-    hs, cs = {}, {}
+    xs, hs, cs, wes, zs, os, ps, ys = {}, {}, {}, {}, {}, {}, {}, {}
 
     hs[-1] = np.copy(hprev)
     cs[-1] = np.copy(cprev)
@@ -102,34 +102,40 @@ def forward(inputs, targets, memory):
         # This step is irregular (to save the amount of matrix multiplication we have to do)
         # I will refer to this vector as [h X]
         zs[t] = np.row_stack((hs[t-1], wes[t]))
+        #print ("shape of zs[t]: " + str(zs[t].shape))
+        #print ("shape of hs[t-1]: " + str(hs[t-1].shape))
+        #print ("shape of wes[t]: " + str(wes[t].shape))
 
         # YOUR IMPLEMENTATION should begin from here
 
         # compute the forget gate
-        # f_gate = sigmoid (W_f \cdot [h X] + b_f)
-        f_gate = sigmoid(np.dot(W_f, zs[t]) + b_f)
+        # f_gate = sigmoid (Wf \cdot [h X] + bf)
+        f_gate = sigmoid(np.dot(Wf, zs[t]) + bf)
 
         # compute the input gate
-        # i_gate = sigmoid (W_i \cdot [h X] + b_i)
-        i_gate = sigmoid (np.dot(W_i,zs[t] + b_f))
+        # i_gate = sigmoid (Wi \cdot [h X] + bi)
+        i_gate = sigmoid(np.dot(Wi, zs[t]) + bi)
 
         # compute the candidate memory
-        # \hat{c} = tanh (W_c \cdot [h X] + b_c])
-        c_cand = tanh(np.dot(W_c, zs[t])+b_c)
+        # \hat{c} = tanh (Wc \cdot [h X] + bc])
+        c_cand = np.tanh(np.dot(Wc, zs[t]) + bc)
 
 
         # new memory: applying forget gate on the previous memory
         # and then adding the input gate on the candidate memory
         # c_new = f_gate * prev_c + i_gate * \hat{c}
         cs[t] = f_gate * cs[t-1] + i_gate * c_cand
+        #print ("shape of cs[t] "  + str(cs[t].shape))
 
         # output gate
-        # o_gate = sigmoid (Wo \cdot [h X] + b_o)
-        o_gate = sigmoid (np.dot(Wo, zs[t])+b_o)
+        # o_gate = sigmoid (Wo \cdot [h X] + bo)
+        o_gate = sigmoid (np.dot(Wo, zs[t])+bo)
+        #print ("shape of o_gate : "  + str(o_gate.shape))
 
         # new hidden state for the LSTM
-        hs[t] = o_gate * tanh(c_new)
-
+        hs[t] = o_gate * np.tanh(cs[t])
+        #print ("shape of hs[t] : "  + str(hs[t].shape))
+        
         # DONE LSTM
         # output layer - softmax and cross-entropy loss
         # unnormalized log probabilities for next chars
@@ -155,13 +161,13 @@ def forward(inputs, targets, memory):
 
 
     # define your activations
-    activations = (xs, zs, f_gate, i_gate, c_cand, c_new, o_gate, hs, os, ps, ys)
+    activations = (xs, hs, cs, wes, zs, os, ps, ys, f_gate, i_gate, c_cand, o_gate)
     memory = (hs[len(inputs)-1], cs[len(inputs)-1])
 
     return loss, activations, memory
 
 
-def backward(activations, clipping=True):
+def backward(activations, clipping=False):
     """
     during the backward pass we follow the track of the forward pass
     the activations are needed so that we can avoid unnecessary re-computation
@@ -174,21 +180,128 @@ def backward(activations, clipping=True):
     dWf, dWi, dWc, dWo = np.zeros_like(Wf), np.zeros_like(Wi),np.zeros_like(Wc), np.zeros_like(Wo)
     dbf, dbi, dbc, dbo = np.zeros_like(bf), np.zeros_like(bi),np.zeros_like(bc), np.zeros_like(bo)
 
-    xs, zs, f_gate, i_gate, c_cand, c_new, o_gate, hs, os, ps, ys = activations
-
+    xs, hs, cs, wes, zs, os, ps, ys, f_gate, i_gate, c_cand, o_gate = activations
 
     # similar to the hidden states in the vanilla RNN
     # We need to initialize the gradients for these variables
     dhnext = np.zeros_like(hs[0])
     dcnext = np.zeros_like(cs[0])
+    #print ("shape of dhnext : "  + str(dhnext.shape))
 
     # back propagation through time starts here
     for t in reversed(range(len(inputs))):
 
         # IMPLEMENT YOUR BACKPROP HERE
-        # write error as L = 1/2*(ps[t]-ys[t])^2
-        # therefore dL/do becomes ps - ys 
+        # skipping over cross entropy and softmax in backwards pass
+        # dL/do becomes ps - ys 
         do = ps[t] - ys[t]
+
+        #o = Why*h_t+by
+        dWhy += np.dot(do, hs[t].T)
+        dby += do
+
+        #dh[t+1] flows in from future cell
+        dh = np.dot(Why.T,do) + dhnext
+
+        # h[t]= o_gate * tanh(c_new)
+        #o_gate = sigmoid(o_presig)
+
+
+        # https://kitchingroup.cheme.cmu.edu/blog/2013/03/12/Potential-gotchas-in-linear-algebra-in-numpy/
+
+        # Numpy has some gotcha features for linear algebra purists. The first is that a 1d array is neither a row, 
+        # nor a column vector. That is, a = a.T if a is a 1d array. 
+        # That means you can take the dot product of a with itself, without transposing the second argument. 
+        # This would not be allowed in Matlab.
+        
+        #a = np.array([0, 1, 2])
+        #print a.shape
+        #print a
+        #print a.T
+
+        #print
+        #print np.dot(a, a)
+        #print np.dot(a, a.T)
+
+        #>>> >>> (3L,)
+        #[0 1 2]
+        #[0 1 2]
+        #>>>
+        #5
+        #5
+
+        # Compare the previous behavior with this 2d array. In this case, you cannot take the dot product of 
+        # b with itself, because the dimensions are incompatible. You must transpose the second argument to 
+        # make it dimensionally consistent. Also, the result of the dot product is not a simple scalar, but a 1 × 1 array.
+
+
+
+
+        #print ("cs[t]: " + str(cs[t]))
+        #print ("dh: " + str(dh))
+        #print (cs[t]*dh)
+        do_gate = np.tanh(cs[t])*dh
+        do_presig = dsigmoid(o_gate) * do_gate #dsigmoid(o_presig?)
+        dWo += np.dot(do_presig, zs[t].T) 
+        dbo += do_presig
+        #print ("shape of do_gate "  + str(do_gate.shape))
+        #print ("shape of do_presig "  + str(do_presig.shape))
+        #print ("shape of Wo "  + str(Wo.shape))
+
+        # c_new = c[t-1]*f_gate + i_gate*c_cand
+        # future cell state dcnext comes in from future cell 
+        dc = dh*o_gate*dtanh(cs[t]) + dcnext #or ...(dtanh(tanh(cs[t])))
+        #print ("shape of dc "  + str(dc.shape))
+
+        # c_new = c[t-1]*f_gate + i_gate*c_cand
+        dc_cand = i_gate*dc
+        dc_pretanh = dtanh(c_cand)*dc_cand #dtanh(c_pretanh) ?
+        #print ("shape of dc_pretanh "  + str(dc_pretanh.shape))
+
+        dWc += np.dot(dc_pretanh, zs[t].T) 
+        dbc += dc_pretanh
+        #print ("shape of dWc "  + str(dWc.shape))
+        #print ("shape of dbc "  + str(dbc.shape))
+
+        # c_new = c[t-1]*f_gate + i_gate*c_cand
+        di_gate = c_cand*dc
+        di_presig = dsigmoid(i_gate)*di_gate #dsigmoid(i_presig) ?
+        dWi += np.dot(di_presig, zs[t].T) 
+        dbi += di_presig
+        #print ("shape of di_presig "  + str(di_presig.shape))
+        #print ("shape of dWi "  + str(dWi.shape))
+
+
+        # c_new = c[t-1]*f_gate + i_gate*c_cand
+        df_gate = cs[t-1]*dc
+        df_presig = dsigmoid(f_gate)*df_gate #dsigmoid(f_presig) ?
+        dWf += np.dot(df_presig, zs[t].T) 
+        dbf += df_presig
+        #print ("shape of df_presig "  + str(df_presig.shape))
+        #print ("shape of dWf "  + str(dWf.shape))
+
+        #sum up gradients from different paths of partial derivatives
+        dz = np.dot(Wf.T, df_presig) +  np.dot(Wi.T, di_presig) + np.dot(Wc.T, dc_pretanh) + np.dot(Wo.T, do_presig)
+        #print ("shape of dz "  + str(dz.shape))
+        #print (" dz "  + str(dz))
+
+        #print ("shape of wes[t]: " + str(wes[t].shape))
+        #print ("len of wes[t]: " + str(len(wes[t])))
+        #gradients dEmb wrt inputs is in last rows of z
+        #print ("shape of dz[-len(wes[t]):,:]: " + str(dz[-len(wes[t]):,:].shape))
+        #print ("dz[-len(wes[t]):,:]: " + str(dz[-len(wes[t]):,:]))
+
+        dWex += np.dot(dz[-len(wes[t]):,:], xs[t].T)
+        #print ("shape of dWex: " + str(dWex.shape))
+        #print ("dWex: " + str(dWex))
+
+        #gradients dhnext wrt h[t-1] is in the first rows of z
+        dhnext = dz[:len(hs[t-1]),:]
+        #print ("shape of dhnext: " + str(dhnext.shape))
+        #print ("dhnext: " + str(dhnext))
+
+        dcnext = f_gate*dc
+
 
 
 
@@ -210,13 +323,36 @@ def sample(memory, seed_ix, n):
     h, c = memory
     x = np.zeros((vocab_size, 1))
     x[seed_ix] = 1
+    generated_chars = []
 
     for t in range(n):
         # IMPLEMENT THE FORWARD FUNCTION ONE MORE TIME HERE
         # BUT YOU DON"T NEED TO STORE THE ACTIVATIONS
+        wes = np.dot(Wex, x)
+        z = np.row_stack((h, wes))
+
+        f_gate = sigmoid(np.dot(Wf, z) + bf)
+        i_gate = sigmoid(np.dot(Wi, z) + bf)
+        c_cand = np.tanh(np.dot(Wc, z) + bc)
+        c = f_gate * c + i_gate * c_cand
+        o_gate = sigmoid (np.dot(Wo, z)+bo)
+        h = o_gate * np.tanh(c)
+        o = np.dot(Why, h) + by
+        p = softmax(o)
+        
+        # the the distribution, we randomly generate samples:
+        ix = np.random.multinomial(1, p.ravel())
+        x = np.zeros((vocab_size, 1))
+
+        for j in range(len(ix)):
+            if ix[j] == 1:
+                index = j
+        x[index] = 1
+        generated_chars.append(index)
 
 
-    return
+
+    return generated_chars
 
 if option == 'train':
 
@@ -242,7 +378,7 @@ if option == 'train':
         targets = [char_to_ix[ch] for ch in data[p+1:p+seq_length+1]]
 
         # sample from the model now and then
-        if n % 100 == 0:
+        if n % 1000 == 0:
             sample_ix = sample((hprev, cprev), inputs[0], 200)
             txt = ''.join(ix_to_char[ix] for ix in sample_ix)
             print ('----\n %s \n----' % (txt, ))
@@ -254,7 +390,7 @@ if option == 'train':
         hprev, cprev = memory
         dWex, dWf, dWi, dWo, dWc, dbf, dbi, dbo, dbc, dWhy, dby = gradients
         smooth_loss = smooth_loss * 0.999 + loss * 0.001
-        if n % 100 == 0: print ('iter %d, loss: %f' % (n, smooth_loss)) # print progress
+        if n % 1000 == 0: print ('iter %d, loss: %f' % (n, smooth_loss)) # print progress
 
         # perform parameter update with Adagrad
         for param, dparam, mem in zip([Wf, Wi, Wo, Wc, bf, bi, bo, bc, Wex, Why, by],
@@ -308,7 +444,7 @@ elif option == 'gradcheck':
             grad_numerical = (loss_positive - loss_negative) / ( 2 * delta )
 
             # compare the relative error between analytical and numerical gradients
-            rel_error = abs(grad_analytic - grad_numerical) / abs(grad_numerical + grad_analytic)
+            rel_error = abs(grad_analytic - grad_numerical) / (abs(grad_numerical + grad_analytic)+1e-20)
 
             if rel_error > 0.01:
-                print ('WARNING %f, %f => %e ' % (grad_numerical, grad_analytic, rel_error))
+                print ("WARNING, num: " +  str(grad_numerical) + ", analytic: " + str(grad_analytic) + " ==> rel. err: " + str(rel_error))
