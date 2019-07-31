@@ -19,6 +19,10 @@ def dsigmoid(y):
     return y * (1 - y)
 
 
+#tanh, just to save "np."
+def tanh(x):
+    return np.tanh(x)
+
 # The derivative of the tanh function
 def dtanh(x):
     return 1 - x*x
@@ -31,7 +35,7 @@ def softmax(x):
 
 
 # data I/O
-data = open('data/debug.txt', 'r').read() # should be simple plain text file
+data = open('RNNAssignment/data/input.txt', 'r').read() # should be simple plain text file
 chars = list(set(data))
 data_size, vocab_size = len(data), len(chars)
 print('data has %d characters, %d unique.' % (data_size, vocab_size))
@@ -42,9 +46,9 @@ std = 0.1
 option = sys.argv[1]
 
 # hyperparameters
-emb_size = 2
-hidden_size = 1  # size of hidden layer of neurons
-seq_length = 2  # number of steps to unroll the RNN for
+emb_size = 4
+hidden_size = 3  # size of hidden layer of neurons
+seq_length = 15  # number of steps to unroll the RNN for
 learning_rate = 5e-2
 max_updates = 500000
 
@@ -118,7 +122,7 @@ def forward(inputs, targets, memory):
 
         # compute the candidate memory
         # \hat{c} = tanh (Wc \cdot [h X] + bc])
-        c_cand = np.tanh(np.dot(Wc, zs[t]) + bc)
+        c_cand = tanh(np.dot(Wc, zs[t]) + bc)
 
 
         # new memory: applying forget gate on the previous memory
@@ -133,7 +137,7 @@ def forward(inputs, targets, memory):
         #print ("shape of o_gate : "  + str(o_gate.shape))
 
         # new hidden state for the LSTM
-        hs[t] = o_gate * np.tanh(cs[t])
+        hs[t] = o_gate * tanh(cs[t])
         #print ("shape of hs[t] : "  + str(hs[t].shape))
         
         # DONE LSTM
@@ -161,7 +165,7 @@ def forward(inputs, targets, memory):
 
 
     # define your activations
-    activations = (xs, hs, cs, wes, zs, os, ps, ys, f_gate, i_gate, c_cand, o_gate)
+    activations = (xs, hs, cs, wes, zs, ps, ys, f_gate, i_gate, c_cand, o_gate)
     memory = (hs[len(inputs)-1], cs[len(inputs)-1])
 
     return loss, activations, memory
@@ -180,7 +184,7 @@ def backward(activations, clipping=False):
     dWf, dWi, dWc, dWo = np.zeros_like(Wf), np.zeros_like(Wi),np.zeros_like(Wc), np.zeros_like(Wo)
     dbf, dbi, dbc, dbo = np.zeros_like(bf), np.zeros_like(bi),np.zeros_like(bc), np.zeros_like(bo)
 
-    xs, hs, cs, wes, zs, os, ps, ys, f_gate, i_gate, c_cand, o_gate = activations
+    xs, hs, cs, wes, zs, ps, ys, f_gate, i_gate, c_cand, o_gate = activations
 
     # similar to the hidden states in the vanilla RNN
     # We need to initialize the gradients for these variables
@@ -240,7 +244,7 @@ def backward(activations, clipping=False):
         #print ("cs[t]: " + str(cs[t]))
         #print ("dh: " + str(dh))
         #print (cs[t]*dh)
-        do_gate = np.tanh(cs[t])*dh
+        do_gate = tanh(cs[t])*dh
         do_presig = dsigmoid(o_gate) * do_gate #dsigmoid(o_presig?)
         dWo += np.dot(do_presig, zs[t].T) 
         dbo += do_presig
@@ -301,8 +305,6 @@ def backward(activations, clipping=False):
         #print ("dhnext: " + str(dhnext))
 
         dcnext = f_gate*dc
-
-
 
 
     if clipping:
@@ -397,6 +399,7 @@ if option == 'train':
                                     [dWf, dWi, dWo, dWc, dbf, dbi, dbo, dbc, dWex, dWhy, dby],
                                     [mWf, mWi, mWo, mWc, mbf, mbi, mbo, mbc, mWex, mWhy, mby]):
             mem += dparam * dparam
+            print(mem)
             param += -learning_rate * dparam / np.sqrt(mem + 1e-8) # adagrad update
 
         p += seq_length # move data pointer
@@ -423,7 +426,7 @@ elif option == 'gradcheck':
     dWex, dWf, dWi, dWo, dWc, dbf, dbi, dbo, dbc, dWhy, dby = gradients
 
     for weight, grad, name in zip([Wf, Wi, Wo, Wc, bf, bi, bo, bc, Wex, Why, by], 
-                                   [dWf, dWi, dWo, dWc, dbf, dbi, dbo, dbc, dWex    , dWhy, dby],
+                                   [dWf, dWi, dWo, dWc, dbf, dbi, dbo, dbc, dWex, dWhy, dby],
                                    ['Wf', 'Wi', 'Wo', 'Wc', 'bf', 'bi', 'bo', 'bc', 'Wex', 'Why', 'by']):
 
         str_ = ("Dimensions dont match between weight and gradient %s and %s." % (weight.shape, grad.shape))
@@ -444,7 +447,7 @@ elif option == 'gradcheck':
             grad_numerical = (loss_positive - loss_negative) / ( 2 * delta )
 
             # compare the relative error between analytical and numerical gradients
-            rel_error = abs(grad_analytic - grad_numerical) / (abs(grad_numerical + grad_analytic)+1e-20)
+            rel_error = abs(grad_analytic - grad_numerical) / (abs(grad_numerical + grad_analytic)+1e-30)
 
-            if rel_error > 0.01:
+            if rel_error > 0.1:
                 print ("WARNING, num: " +  str(grad_numerical) + ", analytic: " + str(grad_analytic) + " ==> rel. err: " + str(rel_error))
