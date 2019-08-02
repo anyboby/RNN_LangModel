@@ -35,7 +35,7 @@ def softmax(x):
 
 
 # data I/O
-data = open('RNNAssignment/data/input.txt', 'r').read() # should be simple plain text file
+data = open('data/ijcnlp_dailydialog/test/dialogues_test_edit.txt', 'r').read() # should be simple plain text file
 chars = list(set(data))
 data_size, vocab_size = len(data), len(chars)
 print('data has %d characters, %d unique.' % (data_size, vocab_size))
@@ -46,14 +46,15 @@ std = 0.1
 option = sys.argv[1]
 
 # hyperparameters
-emb_size = 4
-hidden_size = 3  # size of hidden layer of neurons
-seq_length = 15  # number of steps to unroll the RNN for
-learning_rate = 5e-2
+emb_size = 72
+hidden_size = 196  # size of hidden layer of neurons
+seq_length = 96  # number of steps to unroll the RNN for
+learning_rate = 4e-2 # Learning rate
 max_updates = 500000
 
 concat_size = emb_size + hidden_size
 
+#"""
 # model parameters
 # char embedding parameters
 Wex = np.random.randn(emb_size, vocab_size)*std # embedding layer
@@ -72,6 +73,33 @@ bc = np.zeros((hidden_size, 1)) # memory bias
 # Output layer parameters
 Why = np.random.randn(vocab_size, hidden_size)*0.01 # hidden to output
 by = np.zeros((vocab_size, 1)) # output bias
+"""
+# model parameters
+# char embedding parameters
+Wex = np.ones([emb_size, vocab_size])*std+0.1 # embedding layer
+
+# LSTM parameters
+Wf = np.ones([hidden_size, concat_size]) * std+0.1 # forget gate
+Wi = np.ones([hidden_size, concat_size]) * std+0.1 # input gate
+Wo = np.ones([hidden_size, concat_size]) * std+0.1 # output gate
+Wc = np.ones([hidden_size, concat_size]) * std+0.1 # c term
+
+bf = np.zeros((hidden_size, 1)) # forget bias
+bi = np.zeros((hidden_size, 1)) # input bias
+bo = np.zeros((hidden_size, 1)) # output bias
+bc = np.zeros((hidden_size, 1)) # memory bias
+
+# Output layer parameters
+Why = np.ones([vocab_size, hidden_size])*0.1 # hidden to output
+by = np.zeros((vocab_size, 1)) # output bias
+"""
+
+##debug fill params
+#all_params = (Wex, Wf, Wi, Wo, Wc, bf, bi, bo, bc, Why, by)
+#for param in all_params:
+#    for i in range(len(param.flat)):
+#        if param.flat[i] is not 0:
+#            param.flat[i] = i/len(param.flat)
 
 
 def forward(inputs, targets, memory):
@@ -87,7 +115,7 @@ def forward(inputs, targets, memory):
 
     # Here you should allocate some variables to store the activations during forward
     # One of them here is to store the hiddens and the cells
-    xs, hs, cs, wes, zs, os, ps, ys = {}, {}, {}, {}, {}, {}, {}, {}
+    xs, hs, cs, wes, zs, os, f_gate, i_gate, c_cand, o_gate, ps, ys = {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}
 
     hs[-1] = np.copy(hprev)
     cs[-1] = np.copy(cprev)
@@ -114,30 +142,30 @@ def forward(inputs, targets, memory):
 
         # compute the forget gate
         # f_gate = sigmoid (Wf \cdot [h X] + bf)
-        f_gate = sigmoid(np.dot(Wf, zs[t]) + bf)
+        f_gate[t] = sigmoid(np.dot(Wf, zs[t]) + bf)
 
         # compute the input gate
         # i_gate = sigmoid (Wi \cdot [h X] + bi)
-        i_gate = sigmoid(np.dot(Wi, zs[t]) + bi)
+        i_gate[t] = sigmoid(np.dot(Wi, zs[t]) + bi)
 
         # compute the candidate memory
         # \hat{c} = tanh (Wc \cdot [h X] + bc])
-        c_cand = tanh(np.dot(Wc, zs[t]) + bc)
+        c_cand[t] = tanh(np.dot(Wc, zs[t]) + bc)
 
 
         # new memory: applying forget gate on the previous memory
         # and then adding the input gate on the candidate memory
         # c_new = f_gate * prev_c + i_gate * \hat{c}
-        cs[t] = f_gate * cs[t-1] + i_gate * c_cand
+        cs[t] = f_gate[t] * cs[t-1] + i_gate[t] * c_cand[t]
         #print ("shape of cs[t] "  + str(cs[t].shape))
 
         # output gate
         # o_gate = sigmoid (Wo \cdot [h X] + bo)
-        o_gate = sigmoid (np.dot(Wo, zs[t])+bo)
+        o_gate[t] = sigmoid (np.dot(Wo, zs[t])+bo)
         #print ("shape of o_gate : "  + str(o_gate.shape))
 
         # new hidden state for the LSTM
-        hs[t] = o_gate * tanh(cs[t])
+        hs[t] = o_gate[t] * tanh(cs[t])
         #print ("shape of hs[t] : "  + str(hs[t].shape))
         
         # DONE LSTM
@@ -245,7 +273,7 @@ def backward(activations, clipping=False):
         #print ("dh: " + str(dh))
         #print (cs[t]*dh)
         do_gate = tanh(cs[t])*dh
-        do_presig = dsigmoid(o_gate) * do_gate #dsigmoid(o_presig?)
+        do_presig = dsigmoid(o_gate[t]) * do_gate #dsigmoid(o_presig?)
         dWo += np.dot(do_presig, zs[t].T) 
         dbo += do_presig
         #print ("shape of do_gate "  + str(do_gate.shape))
@@ -254,12 +282,12 @@ def backward(activations, clipping=False):
 
         # c_new = c[t-1]*f_gate + i_gate*c_cand
         # future cell state dcnext comes in from future cell 
-        dc = dh*o_gate*dtanh(cs[t]) + dcnext #or ...(dtanh(tanh(cs[t])))
+        dc = dh*o_gate[t]*dtanh(tanh(cs[t])) + dcnext #or ...(dtanh(tanh(cs[t])))
         #print ("shape of dc "  + str(dc.shape))
 
         # c_new = c[t-1]*f_gate + i_gate*c_cand
-        dc_cand = i_gate*dc
-        dc_pretanh = dtanh(c_cand)*dc_cand #dtanh(c_pretanh) ?
+        dc_cand = i_gate[t]*dc
+        dc_pretanh = dtanh(c_cand[t])*dc_cand #dtanh(c_pretanh) ?
         #print ("shape of dc_pretanh "  + str(dc_pretanh.shape))
 
         dWc += np.dot(dc_pretanh, zs[t].T) 
@@ -268,8 +296,8 @@ def backward(activations, clipping=False):
         #print ("shape of dbc "  + str(dbc.shape))
 
         # c_new = c[t-1]*f_gate + i_gate*c_cand
-        di_gate = c_cand*dc
-        di_presig = dsigmoid(i_gate)*di_gate #dsigmoid(i_presig) ?
+        di_gate = c_cand[t]*dc
+        di_presig = dsigmoid(i_gate[t])*di_gate #dsigmoid(i_presig) ?
         dWi += np.dot(di_presig, zs[t].T) 
         dbi += di_presig
         #print ("shape of di_presig "  + str(di_presig.shape))
@@ -278,7 +306,7 @@ def backward(activations, clipping=False):
 
         # c_new = c[t-1]*f_gate + i_gate*c_cand
         df_gate = cs[t-1]*dc
-        df_presig = dsigmoid(f_gate)*df_gate #dsigmoid(f_presig) ?
+        df_presig = dsigmoid(f_gate[t])*df_gate #dsigmoid(f_presig) ?
         dWf += np.dot(df_presig, zs[t].T) 
         dbf += df_presig
         #print ("shape of df_presig "  + str(df_presig.shape))
@@ -304,7 +332,7 @@ def backward(activations, clipping=False):
         #print ("shape of dhnext: " + str(dhnext.shape))
         #print ("dhnext: " + str(dhnext))
 
-        dcnext = f_gate*dc
+        dcnext = f_gate[t]*dc
 
 
     if clipping:
@@ -349,6 +377,9 @@ def sample(memory, seed_ix, n):
         for j in range(len(ix)):
             if ix[j] == 1:
                 index = j
+        #### DEBUGG ####
+        #index = 15
+        #### DEBUGG ####
         x[index] = 1
         generated_chars.append(index)
 
@@ -376,6 +407,11 @@ if option == 'train':
             hprev = np.zeros((hidden_size,1)) # reset RNN memory
             cprev = np.zeros((hidden_size,1))
             p = 0 # go from start of data
+        
+        ###### DEBUGG ########
+        #inputs = [42,14]
+        #targets = [14,26]
+        ###### DEBUGG ########
         inputs = [char_to_ix[ch] for ch in data[p:p+seq_length]]
         targets = [char_to_ix[ch] for ch in data[p+1:p+seq_length+1]]
 
@@ -399,7 +435,6 @@ if option == 'train':
                                     [dWf, dWi, dWo, dWc, dbf, dbi, dbo, dbc, dWex, dWhy, dby],
                                     [mWf, mWi, mWo, mWc, mbf, mbi, mbo, mbc, mWex, mWhy, mby]):
             mem += dparam * dparam
-            print(mem)
             param += -learning_rate * dparam / np.sqrt(mem + 1e-8) # adagrad update
 
         p += seq_length # move data pointer
@@ -414,7 +449,7 @@ elif option == 'gradcheck':
     inputs = [char_to_ix[ch] for ch in data[p:p+seq_length]]
     targets = [char_to_ix[ch] for ch in data[p+1:p+seq_length+1]]
 
-    delta = 0.001
+    delta = 0.01
 
     hprev = np.zeros((hidden_size, 1))
     cprev = np.zeros((hidden_size, 1))
