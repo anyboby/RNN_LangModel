@@ -35,7 +35,7 @@ def softmax(x):
 
 
 # data I/O
-data = open('data/ijcnlp_dailydialog/test/dialogues_test_edit.txt', 'r').read() # should be simple plain text file
+data = open('RNNAssignment/data/ijcnlp_dailydialog/test/dialogues_test_edit.txt', 'r').read() # should be simple plain text file
 chars = list(set(data))
 data_size, vocab_size = len(data), len(chars)
 print('data has %d characters, %d unique.' % (data_size, vocab_size))
@@ -46,11 +46,13 @@ std = 0.1
 option = sys.argv[1]
 
 # hyperparameters
-emb_size = 72
+emb_size = 36
 hidden_size = 196  # size of hidden layer of neurons
 seq_length = 96  # number of steps to unroll the RNN for
-learning_rate = 4e-2 # Learning rate
+learning_rate = 6e-2 # Learning rate
 max_updates = 500000
+decay=1e-6
+momentum=0.9
 
 concat_size = emb_size + hidden_size
 
@@ -65,7 +67,7 @@ Wi = np.random.randn(hidden_size, concat_size) * std # input gate
 Wo = np.random.randn(hidden_size, concat_size) * std # output gate
 Wc = np.random.randn(hidden_size, concat_size) * std # c term
 
-bf = np.zeros((hidden_size, 1)) # forget bias
+bf = np.ones((hidden_size, 1))*2 # forget bias
 bi = np.zeros((hidden_size, 1)) # input bias
 bo = np.zeros((hidden_size, 1)) # output bias
 bc = np.zeros((hidden_size, 1)) # memory bias
@@ -434,7 +436,12 @@ if option == 'train':
         for param, dparam, mem in zip([Wf, Wi, Wo, Wc, bf, bi, bo, bc, Wex, Why, by],
                                     [dWf, dWi, dWo, dWc, dbf, dbi, dbo, dbc, dWex, dWhy, dby],
                                     [mWf, mWi, mWo, mWc, mbf, mbi, mbo, mbc, mWex, mWhy, mby]):
+            
+            #Adagrad
             mem += dparam * dparam
+            #RMSProp 
+            #mem *= momentum
+            #mem += (1-momentum)*dparam*dparam
             param += -learning_rate * dparam / np.sqrt(mem + 1e-8) # adagrad update
 
         p += seq_length # move data pointer
