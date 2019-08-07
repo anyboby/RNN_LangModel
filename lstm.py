@@ -35,7 +35,7 @@ def softmax(x):
 
 
 # data I/O
-data = open('RNNAssignment/data/ijcnlp_dailydialog/test/dialogues_test_edit.txt', 'r').read() # should be simple plain text file
+data = open('data/ijcnlp_dailydialog/test/dialogues_test_edit.txt', 'r').read() # should be simple plain text file
 chars = list(set(data))
 data_size, vocab_size = len(data), len(chars)
 print('data has %d characters, %d unique.' % (data_size, vocab_size))
