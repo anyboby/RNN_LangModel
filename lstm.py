@@ -49,7 +49,7 @@ option = sys.argv[1]
 emb_size = 36
 hidden_size = 196  # size of hidden layer of neurons
 seq_length = 96  # number of steps to unroll the RNN for
-learning_rate = 6e-2 # Learning rate
+learning_rate = 5e-2 # Learning rate
 max_updates = 500000
 decay=1e-6
 momentum=0.9
@@ -67,7 +67,7 @@ Wi = np.random.randn(hidden_size, concat_size) * std # input gate
 Wo = np.random.randn(hidden_size, concat_size) * std # output gate
 Wc = np.random.randn(hidden_size, concat_size) * std # c term
 
-bf = np.ones((hidden_size, 1))*2 # forget bias
+bf = np.zeros((hidden_size, 1)) # forget bias
 bi = np.zeros((hidden_size, 1)) # input bias
 bo = np.zeros((hidden_size, 1)) # output bias
 bc = np.zeros((hidden_size, 1)) # memory bias
